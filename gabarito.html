@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Cartão-Resposta Escaneável</title>
+    <style>
+        /* Força a remoção de margens da folha no diálogo de impressão */
+        @page {
+            size: A4;
+            margin: 0;
+        }
+        
+        * {
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            width: 210mm;
+            height: 297mm;
+            margin: 0;
+            padding: 14mm 6mm 12mm 6mm; 
+            position: relative;
+            background-color: white;
+            color: #333;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ----------------------------------------------------
+           MARCAS FIDUCIAIS (ÂNCORES DO ALGORITMO)
+        ---------------------------------------------------- */
+        .ancora {
+            position: absolute;
+            width:  12mm;
+            height: 12mm;
+            border: 2mm solid black;
+        }
+        .top-left     { top: 1.5mm; left:  1.5mm; border-right: none; border-bottom: none; }
+        .top-right    { top: 1.5mm; right: 1.5mm; border-left:  none; border-bottom: none; }
+        .bottom-left  { bottom: 1.5mm; left:  1.5mm; border-right: none; border-top: none; }
+        .bottom-right { bottom: 1.5mm; right: 1.5mm; border-left:  none; border-top: none; }
+
+        /* ----------------------------------------------------
+           ESTRUTURA DE ALINHAMENTO GEOMÉTRICO DOS MARCADORES HTML
+        ---------------------------------------------------- */
+        .marcadores-superiores-grid {
+            /* background-color: red; */
+            display: flex;
+            justify-content: space-between;
+            padding: 0;
+            gap: 0.5mm; /* IDÊNTICO ao gap da grade do gabarito */
+            margin-bottom: 2mm;
+        }
+        
+        .bloco-marcador-alinhado {
+            /* background-color: blue; */
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            border: 1px solid transparent; /* Alinha perfeitamente com a borda lateral esquerda */
+        }
+        
+        /* Espaçador que casa simetricamente com o tamanho real da '.celula-num' */
+        .marcador-espaco-num {
+            width: calc(4mm - 0.15mm); /* Largura base da célula + borda divisória */
+            height: 4.4mm;
+            flex-shrink: 0;
+            /* background-color: green; */
+        }
+        
+        /* Container horizontal idêntico à '.celula-opcoes' */
+        .marcador-grupo-alternativas {
+            flex: 1;
+            padding: 0 1mm; /* Padding idêntico ao invólucro das bolinhas */
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Cabeçalho principal */
+        .header-principal {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 2mm;
+            margin-bottom: 3mm;
+            margin-top: 4mm;
+        }
+        .titulo-principal h1 {
+            margin: 0;
+            font-size:30px;
+            letter-spacing: 1px;
+        }
+        .titulo-principal p {
+            margin: 2px 0 0 0;
+            font-size: 10px;
+            font-weight: bold;
+            color: #666;
+        }
+        .badge-dia {
+            border: 2px solid black;
+            border-radius: 50%;
+            width: 16mm;
+            height: 16mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+        }
+        .badge-dia .num { font-size: 18px; }
+        .badge-dia .texto { font-size: 9px; }
+
+        /* Área de Identificação do Aluno */
+        .dados-aluno {
+            border: 1px solid black;
+            border-radius: 4px;
+            padding: 2.5mm;
+            margin-bottom: 3mm;
+            font-size: 10px;
+        }
+        .campo-texto {
+            margin-bottom: 2mm;
+        }
+        .campo-texto label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 6mm;
+        }
+        label {
+            font-size: 14px;
+            color: #444;
+        }
+        .campo-texto .linha-preenchimento {
+            border-bottom: 1px dotted #444;
+            height: 4mm;
+        }
+
+        /* Instruções e Frase */
+        .bloco-instrucoes {
+            border: 1px solid #777;
+            padding: 2mm 3mm;
+            background-color: #fcfcfc;
+            font-size: 9px;
+            line-height: 1.2;
+            margin-bottom: 3mm;
+        }
+        .bloco-instrucoes h3 { margin: 0 0 1mm 0; text-align: center; font-size: 10px; }
+        
+        .bloco-frase {
+            border: 1.5px solid #cc0066;
+            border-radius: 4px;
+            padding: 2mm;
+            margin-bottom: 4mm;
+            font-size: 9px;
+        }
+        .bloco-frase strong { color: #cc0066; }
+        .bloco-frase .caixa-frase {
+            border: 1px solid #aaa;
+            height: 8mm;
+            margin-top: 1.5mm;
+            background-color: #fff;
+        }
+
+        /* ----------------------------------------------------
+           GRADE DE QUESTÕES: FUNDO BRANCO COMPLETO
+        ---------------------------------------------------- */
+        .gabarito-grid {
+            display: flex;
+            justify-content: space-between;
+            padding: 0mm;
+            border-radius: 0px;
+            gap: 0.5mm;
+        }
+
+        .bloco-questoes {
+            background-color: white;
+            border: 1px solid #b55273;
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bloco-header {
+            background-color: #b55273;
+            color: white;
+            font-size: 8px;
+            font-weight: bold;
+            text-align: center;
+            padding: 1.5mm 0;
+            white-space: nowrap;
+            letter-spacing: 1px;
+        }
+
+        .tabela-gabarito {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .tabela-gabarito tr {
+            background-color: #ffffff !important;
+        }
+
+        /* Coluna do Número da Questão */
+        .celula-num {
+            font-size: 8.5px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+            width: 4mm;
+            border-right: 0.3mm solid #b55273; 
+            padding: 0.8mm 0;
+        }
+
+        /* Coluna que armazena o grupo de bolinhas */
+        .celula-opcoes {
+            padding: 0.8mm 1mm;
+            vertical-align: middle;
+        }
+
+        .wrapper-bolinhas {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Bolinhas do Gabarito */
+        .alternativa-bola {
+            width: 4.4mm;
+            height: 4.4mm;
+            border: 0.4mm solid #b55273;
+            background-color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7.5px;
+            font-weight: bold;
+            color: #b55273;
+        }
+
+        /* Rodapé */
+        footer {
+            position: absolute;
+            bottom: 14mm;
+            left: 6mm;
+            right: 6mm;
+            display: flex;
+            justify-content: space-between;
+            font-size: 8px;
+            color: #777;
+        }
+        /* Régua vertical de 15 âncoras na lateral esquerda */
+.regua-ancoras-esquerda {
+    position: absolute;
+    left: 1.175mm; /* Alinhado com o padding do body */
+    top: 133.5mm; /* Ajuste esta altura para casar com o início do seu main/gabarito-grid */
+    display: flex;
+    flex-direction: column;
+    gap: 0; /* Ajuste o gap se precisar espaçar para bater com as linhas */
+}
+
+.ancora-linha-esquerda {
+    width:  2.5mm;
+    height: 2.5mm;
+    background-color: black;
+    margin-bottom: 3.5mm; /* Ajuste esta margem para calibrar a distância vertical entre eles */
+}
+    </style>
+</head>
+<body>
+
+    <div class="ancora top-left"></div>
+    <div class="ancora top-right"></div>
+    <div class="ancora bottom-left"></div>
+    <div class="ancora bottom-right"></div>
+
+    <header class="header-principal">
+        <div class="titulo-principal">
+            <h1>CARTÃO-RESPOSTA</h1>
+            <p>SIMULADO BASEADO NO EXAME NACIONAL DO ENSINO MÉDIO</p>
+        </div>
+        <div class="badge-dia">
+            <span class="num">2º</span>
+            <span class="texto">Dia</span>
+        </div>
+    </header>
+
+    <section class="dados-aluno">
+        <div class="campo-texto">
+            <label>Nome completo:</label>
+            <div class="linha-preenchimento"></div>
+        </div>
+        <div class="campo-texto" style="margin-bottom: 0;">
+            <label>Turma:</label>
+            <div class="linha-preenchimento"></div>
+        </div>
+    </section>
+
+    <section class="bloco-instrucoes">
+        <h3>INSTRUÇÕES</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4mm;">
+            <div>
+                1. Preencha seu nome completo com letra de forma legível.<br>
+                2. Verifique se este caderno corresponde ao seu dia de aplicação.<br>
+                3. Não haverá substituição deste cartão por motivo de erro.
+            </div>
+            <div>
+                4. Preencha os círculos completamente com <strong>caneta preta</strong>.<br>
+                5. Não rasure, não dobre e não amasse este cartão-resposta.<br>
+                6. Respostas com marcação dupla serão anuladas.
+            </div>
+        </div>
+    </section>
+
+    <section class="bloco-frase">
+        <strong>ATENÇÃO:</strong> TRANSCREVA AQUI COM A SUA CALIGRAFIA USUAL, A FRASE APRESENTADA NA CAPA DO SEU CADERNO DE QUESTÕES.
+        <div class="caixa-frase"></div>
+    </section>
+
+    <section class="marcadores-superiores-grid">
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+        <div class="bloco-marcador-alinhado">
+            <div class="marcador-espaco-num"></div>
+            <div class="marcador-grupo-alternativas">
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
+            </div>
+        </div>
+    </section>
+
+    <div class="regua-ancoras-esquerda">
+        <script>
+            for (let i = 0; i < 15; i++) {
+                document.write('<div class="ancora-linha-esquerda"></div>');
+            }
+        </script>
+    </div>
+
+    <main class="gabarito-grid">
+        <script>
+            const totalQuestoes = 90;
+            const questoesPorBloco = 15;
+            const numeroInicial = 91;
+            const alternativas = ['A', 'B', 'C', 'D', 'E'];
+
+            // Loop para gerar os 6 blocos de colunas horizontais
+            for (let b = 0; b < 6; b++) {
+                document.write('<div class="bloco-questoes">');
+                document.write('<div class="bloco-header">QUESTÃO/RESPOSTA</div>');
+                
+                document.write('<table class="tabela-gabarito">');
+                
+                for (let q = 0; q < questoesPorBloco; q++) {
+                    let numQuestao = numeroInicial + (b * questoesPorBloco) + q;
+                    let numFormatado = String(numQuestao).padStart(2, '0'); 
+                    
+                    document.write('<tr>');
+                    document.write('<td class="celula-num">' + numFormatado + '</td>');
+                    
+                    document.write('<td class="celula-opcoes">');
+                    document.write('<div class="wrapper-bolinhas">');
+                    alternativas.forEach(letra => {
+                        document.write('<div class="alternativa-bola">' + letra + '</div>');
+                    });
+                    document.write('</div>');
+                    document.write('</td>');
+                    
+                    document.write('</tr>');
+                }
+                
+                document.write('</table>');
+                document.write('</div>'); 
+            }
+        </script>
+    </main>
+
+    <footer>
+        <span>*Modelo de cartão gerado para correção automatizada.</span>
+        <span>ID da Folha: 90Q-M2</span>
+    </footer>
+
+</body>
+</html>
