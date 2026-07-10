@@ -1,0 +1,7 @@
+[server]
+# Aumenta o tamanho máximo de upload para 50MB
+maxUploadSize = 50
+
+[browser]
+# Evita desconexões prematuras por lentidão de rede
+gatherUsageStats = false

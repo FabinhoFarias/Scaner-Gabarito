@@ -53,12 +53,22 @@
             margin-bottom: 2mm;
         }
         
-        .bloco-marcador-alinhado {
-            /* background-color: blue; */
+        .bloco-marcador-alinhado-superior {
             flex: 1;
             min-width: 0;
             display: flex;
-            border: 1px solid transparent; /* Alinha perfeitamente com a borda lateral esquerda */
+            align-items: center; /* Garante alinhamento vertical interno */
+            border: 1px solid transparent; 
+        }
+
+        .bloco-marcador-alinhado-inferior {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            border: 1px solid transparent;
+            position: relative;
+    top: 0.5mm; /* Seu ajuste fino de altura */
         }
         
         /* Espaçador que casa simetricamente com o tamanho real da '.celula-num' */
@@ -72,7 +82,7 @@
         /* Container horizontal idêntico à '.celula-opcoes' */
         .marcador-grupo-alternativas {
             flex: 1;
-            padding: 0 1mm; /* Padding idêntico ao invólucro das bolinhas */
+            padding: 0 2.25mm; /* Padding idêntico ao invólucro das bolinhas */
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -260,12 +270,21 @@
     top: 133.5mm; /* Ajuste esta altura para casar com o início do seu main/gabarito-grid */
     display: flex;
     flex-direction: column;
-    gap: 0; /* Ajuste o gap se precisar espaçar para bater com as linhas */
+    gap: 0.5mm; /* Ajuste o gap se precisar espaçar para bater com as linhas */
+}
+
+.regua-ancoras-direita {
+    position: absolute;
+    right: 1.175mm; /* Alinhado com o padding do body */
+    top: 133.5mm; /* Ajuste esta altura para casar com o início do seu main/gabarito-grid */
+    display: flex;
+    flex-direction: column;
+    gap: 0.5mm; /* Ajuste o gap se precisar espaçar para bater com as linhas */
 }
 
 .ancora-linha-esquerda {
-    width:  2.5mm;
-    height: 2.5mm;
+    width:  2mm;
+    height: 2mm;
     background-color: black;
     margin-bottom: 3.5mm; /* Ajuste esta margem para calibrar a distância vertical entre eles */
 }
@@ -284,7 +303,7 @@
             <p>SIMULADO BASEADO NO EXAME NACIONAL DO ENSINO MÉDIO</p>
         </div>
         <div class="badge-dia">
-            <span class="num">2º</span>
+            <span class="num">1º</span>
             <span class="texto">Dia</span>
         </div>
     </header>
@@ -321,68 +340,34 @@
         <div class="caixa-frase"></div>
     </section>
 
-    <section class="marcadores-superiores-grid">
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-        <div class="bloco-marcador-alinhado">
-            <div class="marcador-espaco-num"></div>
-            <div class="marcador-grupo-alternativas">
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-                <div style="position: relative; display: block; width: 4.5mm; height: 4.5mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>
-            </div>
-        </div>
-    </section>
+    <section id="marcadores-superiores" class="marcadores-superiores-grid"></section>
+
+    <script>
+        const container = document.getElementById('marcadores-superiores');
+        var htmlGerado = '';
+
+        // Loop para os 6 blocos principais
+        for (let b = 0; b < 6; b++) {
+            htmlGerado += `
+                <div class="bloco-marcador-alinhado-superior">
+                    <div class="marcador-espaco-num"></div>
+                    <div class="marcador-grupo-alternativas">
+            `;
+            
+            // Loop interno para os 5 quadradinhos menores
+            for (let a = 0; a < 5; a++) {
+                htmlGerado += `<div style="position: relative; display: block; width: 2mm; height: 2mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>`;
+            }
+            
+            htmlGerado += `
+                    </div>
+                </div>
+            `;
+        }
+
+        // Injeta o HTML estruturado dentro da section
+        container.innerHTML = htmlGerado;
+    </script>
 
     <div class="regua-ancoras-esquerda">
         <script>
@@ -396,7 +381,7 @@
         <script>
             const totalQuestoes = 90;
             const questoesPorBloco = 15;
-            const numeroInicial = 91;
+            const numeroInicial = 1;
             const alternativas = ['A', 'B', 'C', 'D', 'E'];
 
             // Loop para gerar os 6 blocos de colunas horizontais
@@ -430,10 +415,52 @@
         </script>
     </main>
 
+    <section id="marcadores-inferiores" class="marcadores-superiores-grid" style="margin-top: 2mm; margin-bottom: 0;"></section>
+
+    <script>
+        // Captura o elemento correto que você acabou de criar acima
+        const containerInferior = document.getElementById('marcadores-inferiores');
+        
+        // CORREÇÃO ESSENCIAL: Uma string limpa (let) para não duplicar o HTML do topo
+        let htmlInferior = ''; 
+
+        // Loop para os 6 blocos principais
+        for (let b = 0; b < 6; b++) {
+            htmlInferior += `
+                <div class="bloco-marcador-alinhado-inferior">
+                    <div class="marcador-espaco-num"></div>
+                    <div class="marcador-grupo-alternativas">
+            `;
+            
+            // Loop interno para os 5 quadradinhos menores
+            for (let a = 0; a < 5; a++) {
+                htmlInferior += `<div style="position: relative; display: block; width: 2mm; height: 2mm; background-color: black; margin-left: 0mm; margin-right: 0mm;"></div>`;
+            }
+            
+            htmlInferior += `
+                    </div>
+                </div>
+            `;
+        }
+
+        // Injeta o conteúdo isolado na parte inferior
+        containerInferior.innerHTML = htmlInferior;
+    </script>
+    
+    <div class="regua-ancoras-direita">
+        <script>
+            for (let i = 0; i < 15; i++) {
+                document.write('<div class="ancora-linha-esquerda"></div>');
+            }
+        </script>
+    </div>
+
     <footer>
-        <span>*Modelo de cartão gerado para correção automatizada.</span>
-        <span>ID da Folha: 90Q-M2</span>
+        <span>Modelo de cartão para correção automatizada.</span>
+        <span>DonRuan Tech</span>
     </footer>
+
+    
 
 </body>
 </html>
