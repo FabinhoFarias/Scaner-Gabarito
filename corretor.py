@@ -363,36 +363,30 @@ def detectar_respostas_somente_dicionario(lista_blocos):
             
     return respostas_finais
 
-def mostrar_detecao_90_ancoras(gabarito_endireitado, topo, base, esq, dir):
+def mostrar_detecao_90_ancoras(gabarito_endireitado, topo, base, esq, dir_anc):
     """
-    Exibe uma janela de debug desenhando individualmente cada uma das 90 âncoras
-    com códigos de cores separados por margem para facilitar a validação.
+    Desenha visualmente as 90 âncoras na imagem e retorna o frame para o Streamlit.
     """
     img_visual = gabarito_endireitado.copy()
     
     # 1. Âncoras do Topo (30) - Vermelho
     for idx, (x, y) in enumerate(topo):
         cv2.circle(img_visual, (x, y), 4, (0, 0, 255), -1)
-        if idx % 5 == 0:  # Rótulo simples para não poluir
-            cv2.putText(img_visual, f"T{idx}", (x - 10, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
             
     # 2. Âncoras da Base (30) - Verde
     for idx, (x, y) in enumerate(base):
         cv2.circle(img_visual, (x, y), 4, (0, 255, 0), -1)
-        if idx % 5 == 0:
-            cv2.putText(img_visual, f"B{idx}", (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 0), 1)
             
     # 3. Âncoras da Esquerda (15) - Azul
     for idx, (x, y) in enumerate(esq):
         cv2.circle(img_visual, (x, y), 4, (255, 0, 0), -1)
-        cv2.putText(img_visual, f"L{idx+1}", (x + 8, y + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 0), 1)
         
     # 4. Âncoras da Direita (15) - Amarelo
-    for idx, (x, y) in enumerate(dir):
+    for idx, (x, y) in enumerate(dir_anc):
         cv2.circle(img_visual, (x, y), 4, (0, 255, 255), -1)
-        cv2.putText(img_visual, f"R{idx+1}", (x - 22, y + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
         
-    # cv2.imshow("DEBUG: 90 Ancoras Separadas", img_visual)
+    # RETORNO OBRIGATÓRIO EM RGB PARA O STREAMLIT
+    return cv2.cvtColor(img_visual, cv2.COLOR_BGR2RGB)
 
 def obter_intersecao_ancoras(pt_topo, pt_base, pt_esq, pt_dir):
     """
@@ -675,8 +669,9 @@ def processar_e_detectar_respostas(gabarito_endireitado):
     topo, base, esq, dir_anc = detectar_90_ancoras(gabarito_endireitado)
     
     # Mostrar visualização das 90 âncoras separadas em tempo real
-    mostrar_detecao_90_ancoras(gabarito_endireitado, topo, base, esq, dir_anc)
     
+    img_debug_ancoras = mostrar_detecao_90_ancoras(gabarito_endireitado, topo, base, esq, dir_anc) 
+
     # 2. Pré-processar imagem para ler o preenchimento das bolhas
     gabarito_cinza = cv2.cvtColor(gabarito_endireitado, cv2.COLOR_BGR2GRAY)
     gabarito_borrado = cv2.GaussianBlur(gabarito_cinza, (5, 5), 0)
@@ -728,7 +723,7 @@ def processar_e_detectar_respostas(gabarito_endireitado):
             else:
                 respostas_finais[q] = MAPA_ALTERNATIVA[idx_marcado]
                 
-    return respostas_finais
+    return respostas_finais, img_debug_ancoras
 
 
 def salvar_respostas_json(respostas_dict, caminho_json='respostas_detectadas.json'):
@@ -745,6 +740,52 @@ def salvar_respostas_json(respostas_dict, caminho_json='respostas_detectadas.jso
 
 # MAIN
 def executar_pipeline_omr(frame_bgr):
+    frame_exibicao = frame_bgr.copy()
+    respostas_finais = None
+    img_debug_ancoras = None  # Inicializa como None caso a folha não seja encontrada
+    sucesso = False
+    
+    # --- DETECÇÃO DA FOLHA ---
+    cantos_folha = detectar_folha_retangular(frame_bgr)
+
+    if cantos_folha is not None:
+        try:
+            gabarito_endireitado = transformar_perspectiva_e_cortar(frame_bgr, cantos_folha)
+            gabarito_endireitado = cv2.resize(gabarito_endireitado, (400, 600)) 
+
+            x_start = 1
+            y_start = int(600 * 0.4) 
+            corte_largura = 400
+            corte_altura = int(600 * 0.775)
+
+            ROI = cortar_imagem(gabarito_endireitado, x_start, y_start, corte_largura, corte_altura)
+        
+            # AJUSTE AQUI: Coletando os 2 retornos da leitura de respostas
+            respostas_finais, img_debug_ancoras = processar_e_detectar_respostas(ROI) 
+            
+            if respostas_finais:
+                salvar_respostas_json(respostas_finais, caminho_json='respostas_detectadas.json')
+                texto_status = "GABARITO ALINHADO! JSON GERADO COM SUCESSO."
+                sucesso = True
+            else:
+                texto_status = "Folha encontrada, mas falha ao ler as alternativas."
+        except Exception as e:
+            texto_status = f"Erro no processamento interno: {str(e)}"
+            
+        # Desenho dos Feedbacks Visuais nos cantos 'L'
+        cantos_desenho = cantos_folha.astype(np.int32).reshape(4, 2)
+        cv2.polylines(frame_exibicao, [cantos_desenho], isClosed=True, color=(0, 255, 0), thickness=4)
+        for i, ponto in enumerate(cantos_desenho):
+            cx, cy = ponto
+            cv2.circle(frame_exibicao, (cx, cy), 15, (255, 255, 0), 3)
+            cv2.circle(frame_exibicao, (cx, cy), 5, (255, 0, -1))
+    else:
+        texto_status = "Procurando Folha... Certifique-se de que os 4 cantos em 'L' estão visíveis."
+
+    frame_final_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
+    
+    # MÁGICA COMPLETA: Retornando exatamente os 5 elementos que o seu app.py espera!
+    return frame_final_rgb, img_debug_ancoras, respostas_finais, texto_status, sucesso
     """
     Processa uma única foto do gabarito.
     Retorna: (frame_anotado_rgb, respostas_dict, mensagem_status, sucesso_bool)
