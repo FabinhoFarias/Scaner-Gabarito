@@ -132,7 +132,7 @@ while True:
         time.sleep(1) 
 
     # Exibe a janela de captura
-    cv2.imshow("Corretor Inteligente - IP Webcam", preview)
+    # cv2.imshow("Corretor Inteligente - IP Webcam", preview)
 
     # Tecla de escape: pressionar 'q' fecha o programa
     if cv2.waitKey(1) & 0xFF == ord('q'):

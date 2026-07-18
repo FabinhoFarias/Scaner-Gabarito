@@ -392,7 +392,7 @@ def mostrar_detecao_90_ancoras(gabarito_endireitado, topo, base, esq, dir):
         cv2.circle(img_visual, (x, y), 4, (0, 255, 255), -1)
         cv2.putText(img_visual, f"R{idx+1}", (x - 22, y + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 255, 255), 1)
         
-    cv2.imshow("DEBUG: 90 Ancoras Separadas", img_visual)
+    # cv2.imshow("DEBUG: 90 Ancoras Separadas", img_visual)
 
 def obter_intersecao_ancoras(pt_topo, pt_base, pt_esq, pt_dir):
     """
