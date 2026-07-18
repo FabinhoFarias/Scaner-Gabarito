@@ -407,6 +407,9 @@ def obter_intersecao_ancoras(pt_topo, pt_base, pt_esq, pt_dir):
     py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominador
     return int(px), int(py)
 
+import cv2
+import numpy as np
+
 def detectar_90_ancoras(gabarito_endireitado):
     """
     Detecta individualmente as 90 âncoras físicas (30 topo, 30 base, 15 esquerda, 15 direita)
@@ -418,10 +421,14 @@ def detectar_90_ancoras(gabarito_endireitado):
     gabarito_cinza = cv2.cvtColor(gabarito_endireitado, cv2.COLOR_BGR2GRAY)
     gabarito_borrado = cv2.GaussianBlur(gabarito_cinza, (3, 3), 0)
     
-    # Binarização adaptativa para destacar os quadradinhos pretos das margens (viram branco = 255)
+    # =======================================================================================
+    # 🛠️ MODIFICAÇÃO 1: AJUSTE DO THRESHOLD ADAPTATIVO
+    # Aumentamos o tamanho do bloco (de 15 para 31). Isso ajuda a isolar componentes estruturais
+    # maiores e mais sólidos (os quadrados pretos) e quebra a binarização de pequenos textos/ruídos.
+    # =======================================================================================
     thresh = cv2.adaptiveThreshold(
         gabarito_borrado, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-        cv2.THRESH_BINARY_INV, 15, 7
+        cv2.THRESH_BINARY_INV, 31, 9
     )
     
     # Encontrar contornos externos
@@ -432,10 +439,14 @@ def detectar_90_ancoras(gabarito_endireitado):
     esq_cands = []
     dir_cands = []
     
-    # Limites dinâmicos de área para as pequenas marcas
+    # =======================================================================================
+    # 🛠️ MODIFICAÇÃO 2: CORTE DA ÁREA MÍNIMA (Filtro de tamanho)
+    # Subimos o piso da área mínima (de 0.00004 para 0.0001). Os números "10, 11, 12..." têm
+    # uma área de pixels pretos menor que o quadrado da âncora e serão eliminados aqui.
+    # =======================================================================================
     area_total = altura * largura
-    area_min = area_total * 0.00004  # Cerca de 10 a 15 pixels de área
-    area_max = area_total * 0.0015   # No máximo um pequeno bloco
+    area_min = area_total * 0.0001  
+    area_max = area_total * 0.0015   
     
     for c in contornos:
         area = cv2.contourArea(c)
@@ -444,48 +455,75 @@ def detectar_90_ancoras(gabarito_endireitado):
             cx, cy = x + w // 2, y + h // 2
             proporcao = w / float(h)
             
-            # Classificar de acordo com a região da margem
-            # Margem Superior (30 Âncoras - Quadradas)
-            if cy < altura * 0.12 and 0.6 <= proporcao <= 1.6:
+            # ===================================================================================
+            # 🛠️ MODIFICAÇÃO 3: RESTRIÇÃO SEVERA DAS MARGENS ESPACIAIS (Limites de ROI)
+            # Apertamos os limites para que o script ignore o miolo do gabarito.
+            # - Topo/Base: Agora buscam apenas nos 6% extremos (antes era 12%).
+            # - Esquerda/Direita: Reduzidos para os 4% periféricos (antes era 8%), limpando os números.
+            # ===================================================================================
+            # Margem Superior (30 Âncoras) - Mais colada ao topo
+            if cy < altura * 0.06 and 0.6 <= proporcao <= 1.6:
                 topo_cands.append((cx, cy))
                 
-            # Margem Inferior (30 Âncoras - Quadradas)
-            elif cy > altura * 0.88 and 0.6 <= proporcao <= 1.6:
+            # Margem Inferior (30 Âncoras) - Mais colada à base (evita pegar bolhas marcadas)
+            elif cy > altura * 0.94 and 0.6 <= proporcao <= 1.6:
                 base_cands.append((cx, cy))
                 
-            # Margem Esquerda (15 Âncoras - Retângulos Horizontais)
-            elif cx < largura * 0.08 and 1.0 <= proporcao <= 4.0:
+            # Margem Esquerda (15 Âncoras) - Evita puxar os textos das questões
+            elif cx < largura * 0.04 and 1.0 <= proporcao <= 4.0:
                 esq_cands.append((cx, cy))
                 
-            # Margem Direita (15 Âncoras - Retângulos Horizontais)
-            elif cx > largura * 0.92 and 1.0 <= proporcao <= 4.0:
+            # Margem Direita (15 Âncoras) - Bem colada à extremidade direita
+            elif cx > largura * 0.96 and 1.0 <= proporcao <= 4.0:
                 dir_cands.append((cx, cy))
 
-    # Função interna para limpar ruídos redundantes/próximos
+    # =======================================================================================
+    # 🛠️ MODIFICAÇÃO 4: FILTRO DE OUTLIERS BASEADO NA MEDIANA GEOMÉTRICA
+    # Mesmo se um elemento interno passar pelos filtros anteriores, nós sabemos que as âncoras de
+    # uma mesma margem precisam estar perfeitamente alinhadas em linha reta. 
+    # Usamos a mediana para descobrir onde a reta real está e removemos quem se desviou dela.
+    # =======================================================================================
     def filtrar_e_ordenar(candidatos, por_x=True, dist_min=8):
         if not candidatos:
             return []
-        candidatos = sorted(candidatos, key=lambda p: p[0] if por_x else p[1])
-        filtrados = [candidatos[0]]
-        for p in candidatos[1:]:
+            
+        # Se estamos avaliando o eixo X (Topo/Base), o Y deles deve ser constante (uma linha horizontal)
+        # Se avaliamos o eixo Y (Esq/Dir), o X deles deve ser constante (uma linha vertical)
+        eixo_alinhamento = [p[1] if por_x else p[0] for p in candidatos]
+        mediana_eixo = np.median(eixo_alinhamento)
+        
+        # Filtro tolerante: Só aceita pontos que estão a no máximo 15 pixels de distância da linha da margem
+        candidatos_alinhados = [
+            p for p in candidatos 
+            if abs((p[1] if por_x else p[0]) - mediana_eixo) < 15
+        ]
+        
+        if not candidatos_alinhados:
+            return []
+            
+        # Ordenação padrão e remoção de duplicidade por proximidade
+        candidatos_alinhados = sorted(candidatos_alinhados, key=lambda p: p[0] if por_x else p[1])
+        filtrados = [candidatos_alinhados[0]]
+        for p in candidatos_alinhados[1:]:
             last = filtrados[-1]
             dist = abs(p[0] - last[0]) if por_x else abs(p[1] - last[1])
             if dist > dist_min:
                 filtrados.append(p)
         return filtrados
 
+    # Aplicação do novo filtro refinado
     topo = filtrar_e_ordenar(topo_cands, por_x=True)
     base = filtrar_e_ordenar(base_cands, por_x=True)
     esquerda = filtrar_e_ordenar(esq_cands, por_x=False)
     direita = filtrar_e_ordenar(dir_cands, por_x=False)
 
     # 2. SISTEMA DE SEGURANÇA (INTERPOLAÇÃO)
-    # Se alguma âncora falhou devido à impressão ou rasura, reconstrói linearmente
+    # Como removemos os pontos falsos, o tamanho das listas ficará menor que o esperado (30 ou 15),
+    # o que vai forçar a execução deste bloco para reconstruir os pontos com precisão cirúrgica.
     def interpolar_ancoras(pontos, n_esperado, por_x=True, tamanho_total=100):
         if len(pontos) == n_esperado:
             return pontos
         
-        # Caso extremo de falha total de detecção na margem
         if len(pontos) < 2:
             margem = tamanho_total * 0.05
             passo = (tamanho_total - 2 * margem) / (n_esperado - 1)
@@ -495,14 +533,12 @@ def detectar_90_ancoras(gabarito_endireitado):
             else:
                 return [(coord_fixa, int(margem + i * passo)) for i in range(n_esperado)]
                 
-        # Reconstrução linear baseada nos extremos detectados
         coords = np.array([p[0] if por_x else p[1] for p in pontos])
         outra_coord_media = int(np.mean([p[1] if por_x else p[0] for p in pontos]))
         min_val, max_val = coords[0], coords[-1]
         
         pontos_finais = []
-        if n_esperado == 30: # Topo/Base: 6 blocos de 5 colunas
-            # Distribuição teórica proporcional das colunas do gabarito
+        if n_esperado == 30: 
             pesos_colunas = []
             for bloco in range(6):
                 for col in range(5):
@@ -513,7 +549,7 @@ def detectar_90_ancoras(gabarito_endireitado):
             
             for val in coords_reconstruidas:
                 pontos_finais.append((int(val), outra_coord_media) if por_x else (outra_coord_media, int(val)))
-        else: # Esquerda/Direita: 15 linhas lineares
+        else: 
             passo = (max_val - min_val) / 14.0
             for i in range(15):
                 val = min_val + i * passo
