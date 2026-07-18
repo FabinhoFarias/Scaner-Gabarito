@@ -741,54 +741,30 @@ def salvar_respostas_json(respostas_dict, caminho_json='respostas_detectadas.jso
             json.dump(respostas_para_salvar, f, indent=4)
         print(f"\n✅ RESPOSTAS SALVAS COM SUCESSO: {caminho_json}")
     except Exception as e:
-        print(f"\n❌ ERRO ao salvar JSON: {e}")
+        print(f"\n❌ ERRO ao salvamr JSON: {e}")
 
-# ----------------------------------------------------------------------
-# INÍCIO DO PROGRAMA PRINCIPAL
-# ----------------------------------------------------------------------
-url_stream = 'http://192.168.0.132:8080/video' # meu celular
-# url_stream = 'http://10.0.0.8:8080/video' # meu celular
-# url_stream = 'http://10.0.0.5:8080/video' # meu tablet
-cap = cv2.VideoCapture(url_stream)
 
-if not cap.isOpened():
-    print("Erro: Não foi possível conectar ao stream da câmera IP. Verifique o URL e a conexão Wi-Fi.")
-    # Usar sys.exit() é mais limpo do que exit()
-    sys.exit() 
-
-print("Conexão com o celular estabelecida. Pressione 'q' para sair.")
-
-# ESTADO DE CONTROLE
-processado = False 
-respostas_finais = None # Variável para armazenar o resultado uma vez que o JSON é gerado
-
-# 2. Loop para ler e exibir os frames
-while True:
-
-    # [ WARN:0@30.093] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30062.614000 ms
-    # O aviso acima é apenas um timeout, o 'ret' abaixo lida com a falha de leitura
-    ret, frame = cap.read() 
-
-    if not ret:
-        print("Erro: O stream terminou ou falhou na leitura.")
-        break
-        
-    # Redimensiona o frame para uma exibição mais rápida e fácil
-    altura, largura = frame.shape[:2]
-    fator_redimensionamento = 0.5 
-    frame_exibicao = cv2.resize(frame.copy(), (largura // 2, altura // 2))
+# MAIN
+def executar_pipeline_omr(frame_bgr):
+    """
+    Processa uma única foto do gabarito.
+    Retorna: (frame_anotado_rgb, respostas_dict, mensagem_status, sucesso_bool)
+    """
+    # Criamos uma cópia para desenhar os feedbacks visuais sem alterar o original
+    frame_exibicao = frame_bgr.copy()
+    respostas_finais = None
+    sucesso = False
     
     # --- DETECÇÃO DA FOLHA ---
-    cantos_folha = detectar_folha_retangular(frame)
+    cantos_folha = detectar_folha_retangular(frame_bgr)
 
     if cantos_folha is not None:
-        
-        # O processamento completo SÓ OCORRE se a folha foi detectada PELA PRIMEIRA VEZ
-        if not processado:
-            print("\n🔍 Marcas em 'L' detectadas! Iniciando OMR...")
-            gabarito_endireitado = transformar_perspectiva_e_cortar(frame, cantos_folha)
+        try:
+            # 1. Alinhamento de Perspectiva
+            gabarito_endireitado = transformar_perspectiva_e_cortar(frame_bgr, cantos_folha)
             gabarito_endireitado = cv2.resize(gabarito_endireitado, (400, 600)) 
 
+            # 2. Definição da Região de Interesse (ROI) das questões
             x_start = 1
             y_start = int(600 * 0.4) 
             corte_largura = 400
@@ -798,54 +774,39 @@ while True:
                                 x_start, y_start, 
                                 corte_largura, corte_altura)
         
+            # 3. Processamento OMR das Alternativas
             respostas_finais = processar_e_detectar_respostas(ROI) 
+            
             if respostas_finais:
                 salvar_respostas_json(respostas_finais, caminho_json='respostas_detectadas.json')
-                
-            processado = True 
+                texto_status = "GABARITO ALINHADO! JSON GERADO COM SUCESSO."
+                sucesso = True
+            else:
+                texto_status = "Folha encontrada, mas falha ao ler as alternativas."
+        except Exception as e:
+            texto_status = f"Erro no processamento interno: {str(e)}"
             
         # ==========================================
-        # ESTRATÉGIA DE VISUALIZAÇÃO DOS CANTOS (L)
+        # DESENHO DOS FEEDBACKS VISUAIS (CANTOS L)
         # ==========================================
-        # Converter os pontos detectados para escala do frame de exibição
-        cantos_redimensionados = (cantos_folha * fator_redimensionamento).astype(np.int32).reshape(4, 2)
+        # Como é uma foto estática, desenhamos direto na escala original para não perder resolução
+        cantos_desenho = cantos_folha.astype(np.int32).reshape(4, 2)
         
-        # 1. Desenhar linhas verdes conectando os centros dos "L"s
-        cv2.polylines(frame_exibicao, [cantos_redimensionados], isClosed=True, color=(0, 255, 0), thickness=2)
+        # Linhas guia verdes
+        cv2.polylines(frame_exibicao, [cantos_desenho], isClosed=True, color=(0, 255, 0), thickness=4)
         
-        # 2. Desenhar um alvo azul neon no centro de cada um dos 4 "L"s
-        for i, ponto in enumerate(cantos_redimensionados):
+        # Alvos nos cantos
+        for i, ponto in enumerate(cantos_desenho):
             cx, cy = ponto
-            # Círculo externo (borda do alvo)
-            cv2.circle(frame_exibicao, (cx, cy), 12, (255, 255, 0), 2)
-            # Círculo interno (ponto central)
-            cv2.circle(frame_exibicao, (cx, cy), 4, (255, 0, 0), -1)
-            # Rótulo de texto mostrando a ordem da perspectiva
-            cv2.putText(frame_exibicao, f"L {i+1}", (cx - 15, cy - 18), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-
-        cor_status = (0, 255, 0)
-        texto_status = "GABARITO ALINHADO! JSON GERADO." if processado else "MARCAS DETECTADAS!"
-        cv2.putText(frame_exibicao, texto_status, (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, cor_status, 2)  
+            cv2.circle(frame_exibicao, (cx, cy), 15, (255, 255, 0), 3)
+            cv2.circle(frame_exibicao, (cx, cy), 5, (255, 0, 0), -1)
+            cv2.putText(frame_exibicao, f"L {i+1}", (cx - 20, cy - 22), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
     else:
-        # Visualização quando a folha não é detectada
-        cv2.putText(frame_exibicao, "Procurando Folha...", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        
-        # Se a janela do gabarito existir, tente fechá-la quando a folha sumir
-        try:
-             cv2.destroyWindow('Gabarito Endireitado')
-        except:
-             pass
-        
-    # Exibir o frame de detecção principal
-    # cv2.imshow('DETECCAO DE GABARITO (Pressione Q para Sair)', frame_exibicao)
-    
-    # Parar o loop se a tecla 'q' for pressionada
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        texto_status = "Procurando Folha... Certifique-se de que os 4 cantos em 'L' estão visíveis."
 
-# 3. Liberar o recurso de captura e fechar janelas
-cap.release()
-cv2.destroyAllWindows()
+    # ALERTA IMPORTANTE: O OpenCV trabalha em BGR, mas o Streamlit/Web trabalha em RGB.
+    # Precisamos converter a imagem antes de exportar!
+    frame_final_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
+    
+    return frame_final_rgb, respostas_finais, texto_status, sucesso

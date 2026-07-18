@@ -1,37 +1,60 @@
 import streamlit as st
-from corretor import processar_gabarito
+import numpy as np
+import cv2
+from corretor import executar_pipeline_omr
+import json
 
-st.set_page_config(page_title="Corretor OMR", layout="wide")
 
-st.title("📸 Corretor Inteligente de Gabaritos (91-180)")
-st.subheader("Módulo de Leitura e Validação Geométrica")
+# Configuração inicial da página Web
+st.set_page_config(page_title="Corretor de Gabaritos OMR", layout="centered")
+st.title("📝 Corretor Inteligente de Gabaritos")
+st.write("Tire uma foto nítida do cartão-resposta alinhando os 4 cantos em 'L'.")
 
-uploaded_file = st.file_uploader("Envie a foto do Cartão-Resposta...", type=["jpg", "jpeg", "png"])
+# Opção de entrada: Câmera ativa ou Upload de foto pronta
+metodo_entrada = st.radio("Escolha o método de entrada:", ("Tirar Foto pela Câmera", "Carregar Arquivo de Imagem"))
 
-if uploaded_file is not None:
-    bytes_data = uploaded_file.read()
+imagem_bytes = None
+
+if metodo_entrada == "Tirar Foto pela Câmera":
+    # Cria um componente de câmera web direto no navegador (funciona no celular também!)
+    imagem_bytes = st.camera_input("Posicione o gabarito no fundo escuro e clique em Tirar Foto")
+else:
+    imagem_bytes = st.file_uploader("Selecione a foto do gabarito (Formato JPG/PNG)", type=["jpg", "jpeg", "png"])
+
+# Se o usuário forneceu uma imagem (tirou foto ou fez upload)
+if imagem_bytes is not None:
     
-    with st.spinner('Processando matriz de marcações...'):
-        respostas, img_resultado, status = processar_gabarito(bytes_data)
-        
-    if respostas:
+    # Converter os bytes recebidos pelo Streamlit em uma matriz de imagem do OpenCV (BGR)
+    file_bytes = np.frombuffer(imagem_bytes.getvalue(), np.uint8)
+    frame_bgr = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    
+    st.info("🔄 Processando gabarito, aguarde...")
+    
+    # Chamar a função purificada que criamos no passo anterior
+    imagem_processada, respostas, status, sucesso = executar_pipeline_omr(frame_bgr)
+    
+    # Exibir a imagem com os feedbacks visuais na tela do navegador
+    st.image(imagem_processada, caption="Visualização do Scanner", use_container_width=True)
+    
+    # Exibir status do processamento
+    if sucesso:
         st.success(status)
         
-        col1, col2 = st.columns([2, 1])
-        
+        # Criar duas colunas para mostrar os resultados organizados
+        col1, col2 = st.columns([1, 2])
         with col1:
-            st.image(img_resultado, channels="BGR", use_column_width=True, 
-                     caption="Grid de Alinhamento Corrigido sobre as Questões")
-            
+            st.metric(label="Total de Questões Lidas", value=f"{len(respostas)}/90")
         with col2:
-            st.header("📊 Respostas Extraídas")
+            # Permite o download do JSON gerado direto pelo navegador
+            st.download_button(
+                label="📥 Baixar JSON de Respostas",
+                data=json.dumps(respostas, indent=4),
+                file_name="respostas_detectadas.json",
+                mime="application/json"
+            )
             
-            dados_tabela = [{"Questão": k, "Marcado": v} for k, v in sorted(respostas.items())]
-            
-            sub_col1, sub_col2 = st.columns(2)
-            meio = len(dados_tabela) // 2
-            
-            sub_col1.dataframe(dados_tabela[:meio], hide_index=True, use_container_width=True)
-            sub_col2.dataframe(dados_tabela[meio:], hide_index=True, use_container_width=True)
+        # Mostrar um preview das respostas em tabela na interface web
+        with st.expander("Ver mapa de respostas detectadas"):
+            st.json(respostas)
     else:
         st.error(status)
