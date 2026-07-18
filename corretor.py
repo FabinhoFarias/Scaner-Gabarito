@@ -407,31 +407,19 @@ def obter_intersecao_ancoras(pt_topo, pt_base, pt_esq, pt_dir):
     py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / denominador
     return int(px), int(py)
 
-import cv2
-import numpy as np
+
 
 def detectar_90_ancoras(gabarito_endireitado):
-    """
-    Detecta individualmente as 90 âncoras físicas (30 topo, 30 base, 15 esquerda, 15 direita)
-    utilizando análise de contornos e proporção nas margens do papel.
-    """
     altura, largura = gabarito_endireitado.shape[:2]
     
-    # 1. Pré-processamento focado nas marcas pretas das margens
     gabarito_cinza = cv2.cvtColor(gabarito_endireitado, cv2.COLOR_BGR2GRAY)
     gabarito_borrado = cv2.GaussianBlur(gabarito_cinza, (3, 3), 0)
     
-    # =======================================================================================
-    # 🛠️ MODIFICAÇÃO 1: AJUSTE DO THRESHOLD ADAPTATIVO
-    # Aumentamos o tamanho do bloco (de 15 para 31). Isso ajuda a isolar componentes estruturais
-    # maiores e mais sólidos (os quadrados pretos) e quebra a binarização de pequenos textos/ruídos.
-    # =======================================================================================
     thresh = cv2.adaptiveThreshold(
         gabarito_borrado, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY_INV, 31, 9
     )
     
-    # Encontrar contornos externos
     contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     topo_cands = []
@@ -439,13 +427,9 @@ def detectar_90_ancoras(gabarito_endireitado):
     esq_cands = []
     dir_cands = []
     
-    # =======================================================================================
-    # 🛠️ MODIFICAÇÃO 2: CORTE DA ÁREA MÍNIMA (Filtro de tamanho)
-    # Subimos o piso da área mínima (de 0.00004 para 0.0001). Os números "10, 11, 12..." têm
-    # uma área de pixels pretos menor que o quadrado da âncora e serão eliminados aqui.
-    # =======================================================================================
+    # Limites proporcionais atualizados para a nova resolução mais alta
     area_total = altura * largura
-    area_min = area_total * 0.0001  
+    area_min = area_total * 0.00005  
     area_max = area_total * 0.0015   
     
     for c in contornos:
@@ -455,79 +439,84 @@ def detectar_90_ancoras(gabarito_endireitado):
             cx, cy = x + w // 2, y + h // 2
             proporcao = w / float(h)
             
-            # ===================================================================================
-            # 🛠️ MODIFICAÇÃO 3: RESTRIÇÃO SEVERA DAS MARGENS ESPACIAIS (Limites de ROI)
-            # Apertamos os limites para que o script ignore o miolo do gabarito.
-            # - Topo/Base: Agora buscam apenas nos 6% extremos (antes era 12%).
-            # - Esquerda/Direita: Reduzidos para os 4% periféricos (antes era 8%), limpando os números.
-            # ===================================================================================
-            # Margem Superior (30 Âncoras) - Mais colada ao topo
-            if cy < altura * 0.06 and 0.6 <= proporcao <= 1.6:
+            # Captura inicial baseada nas regiões periféricas da folha
+            if cy < altura * 0.08 and 0.5 <= proporcao <= 1.8:
                 topo_cands.append((cx, cy))
-                
-            # Margem Inferior (30 Âncoras) - Mais colada à base (evita pegar bolhas marcadas)
-            elif cy > altura * 0.94 and 0.6 <= proporcao <= 1.6:
+            elif cy > altura * 0.92 and 0.5 <= proporcao <= 1.8:
                 base_cands.append((cx, cy))
-                
-            # Margem Esquerda (15 Âncoras) - Evita puxar os textos das questões
-            elif cx < largura * 0.04 and 1.0 <= proporcao <= 4.0:
+            elif cx < largura * 0.06 and 0.9 <= proporcao <= 4.5:
                 esq_cands.append((cx, cy))
-                
-            # Margem Direita (15 Âncoras) - Bem colada à extremidade direita
-            elif cx > largura * 0.96 and 1.0 <= proporcao <= 4.0:
+            elif cx > largura * 0.94 and 0.9 <= proporcao <= 4.5:
                 dir_cands.append((cx, cy))
 
     # =======================================================================================
-    # 🛠️ MODIFICAÇÃO 4: FILTRO DE OUTLIERS BASEADO NA MEDIANA GEOMÉTRICA
-    # Mesmo se um elemento interno passar pelos filtros anteriores, nós sabemos que as âncoras de
-    # uma mesma margem precisam estar perfeitamente alinhadas em linha reta. 
-    # Usamos a mediana para descobrir onde a reta real está e removemos quem se desviou dela.
+    # 🛠️ IMPLEMENTAÇÃO DA SUA LÓGICA: TRAVA DE COORDENADAS CONTRA VARIAÇÃO BRUSCA
+    # Para evitar que ruídos internos dominem a média, nós filtramos os candidatos 
+    # baseando o alinhamento estrito nos elementos mais próximos das respectivas bordas.
     # =======================================================================================
-    def filtrar_e_ordenar(candidatos, por_x=True, dist_min=8):
+    TOLERANCIA_PIXELS = 12  # Janela máxima permitida para desalinhamento de reta
+    
+    # 1. MARGEM ESQUERDA: O "X" NÃO PODE VARIAR.
+    if esq_cands:
+        # Ordena aproximando da borda esquerda (menores valores de X primeiro)
+        esq_cands = sorted(esq_cands, key=lambda p: p[0])
+        # Define o X real usando a mediana dos 5 candidatos mais externos da ponta
+        baseline_x = np.median([p[0] for p in esq_cands[:5]])
+        # Descarta cirurgicamente qualquer número ou bolha que entrou para o miolo da página
+        esq_cands = [p for p in esq_cands if abs(p[0] - baseline_x) <= TOLERANCIA_PIXELS]
+
+    # 2. MARGEM DIREITA: O "X" NÃO PODE VARIAR.
+    if dir_cands:
+        # Ordena aproximando da borda direita (maiores valores de X primeiro)
+        dir_cands = sorted(dir_cands, key=lambda p: p[0], reverse=True)
+        baseline_x = np.median([p[0] for p in dir_cands[:5]])
+        dir_cands = [p for p in dir_cands if abs(p[0] - baseline_x) <= TOLERANCIA_PIXELS]
+
+    # 3. MARGEM DO TOPO: O "Y" NÃO PODE VARIAR.
+    if topo_cands:
+        # Ordena aproximando da borda superior (menores valores de Y primeiro)
+        topo_cands = sorted(topo_cands, key=lambda p: p[1])
+        baseline_y = np.median([p[1] for p in topo_cands[:5]])
+        topo_cands = [p for p in topo_cands if abs(p[1] - baseline_y) <= TOLERANCIA_PIXELS]
+
+    # 4. MARGEM DA BASE: O "Y" NÃO PODE VARIAR.
+    if base_cands:
+        # Ordena aproximando da borda inferior (maiores valores de Y primeiro)
+        base_cands = sorted(base_cands, key=lambda p: p[1], reverse=True)
+        baseline_y = np.median([p[1] for p in base_cands[:5]])
+        base_cands = [p for p in base_cands if abs(p[1] - baseline_y) <= TOLERANCIA_PIXELS]
+
+    # =======================================================================================
+    # Ordenação sequencial fina e remoção de duplicatas por proximidade (mesmo eixo de fluxo)
+    # =======================================================================================
+    def ordenar_e_limpar_redundancia(candidatos, por_x=True, dist_min=16):
         if not candidatos:
             return []
-            
-        # Se estamos avaliando o eixo X (Topo/Base), o Y deles deve ser constante (uma linha horizontal)
-        # Se avaliamos o eixo Y (Esq/Dir), o X deles deve ser constante (uma linha vertical)
-        eixo_alinhamento = [p[1] if por_x else p[0] for p in candidatos]
-        mediana_eixo = np.median(eixo_alinhamento)
-        
-        # Filtro tolerante: Só aceita pontos que estão a no máximo 15 pixels de distância da linha da margem
-        candidatos_alinhados = [
-            p for p in candidatos 
-            if abs((p[1] if por_x else p[0]) - mediana_eixo) < 15
-        ]
-        
-        if not candidatos_alinhados:
-            return []
-            
-        # Ordenação padrão e remoção de duplicidade por proximidade
-        candidatos_alinhados = sorted(candidatos_alinhados, key=lambda p: p[0] if por_x else p[1])
-        filtrados = [candidatos_alinhados[0]]
-        for p in candidatos_alinhados[1:]:
+        candidatos = sorted(candidatos, key=lambda p: p[0] if por_x else p[1])
+        filtrados = [candidatos[0]]
+        for p in candidatos[1:]:
             last = filtrados[-1]
             dist = abs(p[0] - last[0]) if por_x else abs(p[1] - last[1])
             if dist > dist_min:
                 filtrados.append(p)
         return filtrados
 
-    # Aplicação do novo filtro refinado
-    topo = filtrar_e_ordenar(topo_cands, por_x=True)
-    base = filtrar_e_ordenar(base_cands, por_x=True)
-    esquerda = filtrar_e_ordenar(esq_cands, por_x=False)
-    direita = filtrar_e_ordenar(dir_cands, por_x=False)
+    topo = ordenar_e_limpar_redundancia(topo_cands, por_x=True)
+    base = ordenar_e_limpar_redundancia(base_cands, por_x=True)
+    esquerda = ordenar_e_limpar_redundancia(esq_cands, por_x=False)
+    direita = ordenar_e_limpar_redundancia(dir_cands, por_x=False)
 
-    # 2. SISTEMA DE SEGURANÇA (INTERPOLAÇÃO)
-    # Como removemos os pontos falsos, o tamanho das listas ficará menor que o esperado (30 ou 15),
-    # o que vai forçar a execução deste bloco para reconstruir os pontos com precisão cirúrgica.
+    # 2. SISTEMA DE SEGURANÇA (INTERPOLAÇÃO LINEAR)
+    # Como limpamos os pontos invasores, as listas terão menos pontos que o esperado.
+    # Este bloco vai reconstruir perfeitamente as posições usando matemática vetorial limpa.
     def interpolar_ancoras(pontos, n_esperado, por_x=True, tamanho_total=100):
         if len(pontos) == n_esperado:
             return pontos
         
         if len(pontos) < 2:
-            margem = tamanho_total * 0.05
+            margem = tamanho_total * 0.04
             passo = (tamanho_total - 2 * margem) / (n_esperado - 1)
-            coord_fixa = int(tamanho_total * (0.05 if n_esperado != 15 else 0.95))
+            coord_fixa = int(tamanho_total * (0.04 if n_esperado != 15 else 0.96))
             if por_x:
                 return [(int(margem + i * passo), coord_fixa) for i in range(n_esperado)]
             else:
@@ -787,7 +776,7 @@ def executar_pipeline_omr(frame_bgr):
     if cantos_folha is not None:
         try:
             gabarito_endireitado = transformar_perspectiva_e_cortar(frame_bgr, cantos_folha)
-            gabarito_endireitado = cv2.resize(gabarito_endireitado, (400, 600)) 
+            gabarito_endireitado = cv2.resize(gabarito_endireitado, (800, 1200)) 
 
             x_start = 1
             y_start = int(600 * 0.4) 
