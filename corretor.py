@@ -410,27 +410,35 @@ def obter_intersecao_ancoras(pt_topo, pt_base, pt_esq, pt_dir):
 
 
 def detectar_90_ancoras(gabarito_endireitado):
+    """
+    MODO DIAGNÓSTICO: Retorna ESTRITAMENTE os pontos que o OpenCV conseguiu detectar.
+    Sem nenhuma lógica de predição, preenchimento ou aproximação matemática.
+    """
     altura, largura = gabarito_endireitado.shape[:2]
     
+    # 🎛️ Modifique estes coeficientes para ver o impacto direto nos contornos capturados
+    AREA_MIN_COEF = 0.00004  
+    AREA_MAX_COEF = 0.0015   
+    
+    area_total = altura * largura
+    area_min = area_total * AREA_MIN_COEF  
+    area_max = area_total * AREA_MAX_COEF   
+
+    # 1. Binarização da imagem
     gabarito_cinza = cv2.cvtColor(gabarito_endireitado, cv2.COLOR_BGR2GRAY)
     gabarito_borrado = cv2.GaussianBlur(gabarito_cinza, (3, 3), 0)
-    
     thresh = cv2.adaptiveThreshold(
         gabarito_borrado, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
         cv2.THRESH_BINARY_INV, 31, 9
     )
     
+    # 2. Captura de contornos brutos
     contornos, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     topo_cands = []
     base_cands = []
     esq_cands = []
     dir_cands = []
-    
-    # Limites proporcionais atualizados para a nova resolução mais alta
-    area_total = altura * largura
-    area_min = area_total * 0.00005  
-    area_max = area_total * 0.0015   
     
     for c in contornos:
         area = cv2.contourArea(c)
@@ -439,57 +447,18 @@ def detectar_90_ancoras(gabarito_endireitado):
             cx, cy = x + w // 2, y + h // 2
             proporcao = w / float(h)
             
-            # Captura inicial baseada nas regiões periféricas da folha
-            if cy < altura * 0.08 and 0.5 <= proporcao <= 1.8:
+            # Filtro geográfico das calhas das bordas
+            if cy < altura * 0.06 and 0.5 <= proporcao <= 2.0:
                 topo_cands.append((cx, cy))
-            elif cy > altura * 0.92 and 0.5 <= proporcao <= 1.8:
+            elif cy > altura * 0.94 and 0.5 <= proporcao <= 2.0:
                 base_cands.append((cx, cy))
-            elif cx < largura * 0.06 and 0.9 <= proporcao <= 4.5:
+            elif cx < largura * 0.04 and 0.7 <= proporcao <= 4.5:
                 esq_cands.append((cx, cy))
-            elif cx > largura * 0.94 and 0.9 <= proporcao <= 4.5:
+            elif cx > largura * 0.96 and 0.7 <= proporcao <= 4.5:
                 dir_cands.append((cx, cy))
 
-    # =======================================================================================
-    # 🛠️ IMPLEMENTAÇÃO DA SUA LÓGICA: TRAVA DE COORDENADAS CONTRA VARIAÇÃO BRUSCA
-    # Para evitar que ruídos internos dominem a média, nós filtramos os candidatos 
-    # baseando o alinhamento estrito nos elementos mais próximos das respectivas bordas.
-    # =======================================================================================
-    TOLERANCIA_PIXELS = 12  # Janela máxima permitida para desalinhamento de reta
-    
-    # 1. MARGEM ESQUERDA: O "X" NÃO PODE VARIAR.
-    if esq_cands:
-        # Ordena aproximando da borda esquerda (menores valores de X primeiro)
-        esq_cands = sorted(esq_cands, key=lambda p: p[0])
-        # Define o X real usando a mediana dos 5 candidatos mais externos da ponta
-        baseline_x = np.median([p[0] for p in esq_cands[:5]])
-        # Descarta cirurgicamente qualquer número ou bolha que entrou para o miolo da página
-        esq_cands = [p for p in esq_cands if abs(p[0] - baseline_x) <= TOLERANCIA_PIXELS]
-
-    # 2. MARGEM DIREITA: O "X" NÃO PODE VARIAR.
-    if dir_cands:
-        # Ordena aproximando da borda direita (maiores valores de X primeiro)
-        dir_cands = sorted(dir_cands, key=lambda p: p[0], reverse=True)
-        baseline_x = np.median([p[0] for p in dir_cands[:5]])
-        dir_cands = [p for p in dir_cands if abs(p[0] - baseline_x) <= TOLERANCIA_PIXELS]
-
-    # 3. MARGEM DO TOPO: O "Y" NÃO PODE VARIAR.
-    if topo_cands:
-        # Ordena aproximando da borda superior (menores valores de Y primeiro)
-        topo_cands = sorted(topo_cands, key=lambda p: p[1])
-        baseline_y = np.median([p[1] for p in topo_cands[:5]])
-        topo_cands = [p for p in topo_cands if abs(p[1] - baseline_y) <= TOLERANCIA_PIXELS]
-
-    # 4. MARGEM DA BASE: O "Y" NÃO PODE VARIAR.
-    if base_cands:
-        # Ordena aproximando da borda inferior (maiores valores de Y primeiro)
-        base_cands = sorted(base_cands, key=lambda p: p[1], reverse=True)
-        baseline_y = np.median([p[1] for p in base_cands[:5]])
-        base_cands = [p for p in base_cands if abs(p[1] - baseline_y) <= TOLERANCIA_PIXELS]
-
-    # =======================================================================================
-    # Ordenação sequencial fina e remoção de duplicatas por proximidade (mesmo eixo de fluxo)
-    # =======================================================================================
-    def ordenar_e_limpar_redundancia(candidatos, por_x=True, dist_min=16):
+    # 3. Apenas elimina contornos repetidos no MESMO quadrado preto (borda interna/externa)
+    def eliminar_redundancia(candidatos, por_x=True, dist_min=15):
         if not candidatos:
             return []
         candidatos = sorted(candidatos, key=lambda p: p[0] if por_x else p[1])
@@ -501,57 +470,14 @@ def detectar_90_ancoras(gabarito_endireitado):
                 filtrados.append(p)
         return filtrados
 
-    topo = ordenar_e_limpar_redundancia(topo_cands, por_x=True)
-    base = ordenar_e_limpar_redundancia(base_cands, por_x=True)
-    esquerda = ordenar_e_limpar_redundancia(esq_cands, por_x=False)
-    direita = ordenar_e_limpar_redundancia(dir_cands, por_x=False)
+    topo_finais = eliminar_redundancia(topo_cands, por_x=True)
+    base_finais = eliminar_redundancia(base_cands, por_x=True)
+    esq_finais = eliminar_redundancia(esq_cands, por_x=False)
+    dir_finais = eliminar_redundancia(dir_cands, por_x=False)
 
-    # 2. SISTEMA DE SEGURANÇA (INTERPOLAÇÃO LINEAR)
-    # Como limpamos os pontos invasores, as listas terão menos pontos que o esperado.
-    # Este bloco vai reconstruir perfeitamente as posições usando matemática vetorial limpa.
-    def interpolar_ancoras(pontos, n_esperado, por_x=True, tamanho_total=100):
-        if len(pontos) == n_esperado:
-            return pontos
-        
-        if len(pontos) < 2:
-            margem = tamanho_total * 0.04
-            passo = (tamanho_total - 2 * margem) / (n_esperado - 1)
-            coord_fixa = int(tamanho_total * (0.04 if n_esperado != 15 else 0.96))
-            if por_x:
-                return [(int(margem + i * passo), coord_fixa) for i in range(n_esperado)]
-            else:
-                return [(coord_fixa, int(margem + i * passo)) for i in range(n_esperado)]
-                
-        coords = np.array([p[0] if por_x else p[1] for p in pontos])
-        outra_coord_media = int(np.mean([p[1] if por_x else p[0] for p in pontos]))
-        min_val, max_val = coords[0], coords[-1]
-        
-        pontos_finais = []
-        if n_esperado == 30: 
-            pesos_colunas = []
-            for bloco in range(6):
-                for col in range(5):
-                    pesos_colunas.append(bloco * 6.5 + col * 1.0)
-            pesos_colunas = np.array(pesos_colunas)
-            pesos_normalizados = (pesos_colunas - pesos_colunas[0]) / (pesos_colunas[-1] - pesos_colunas[0])
-            coords_reconstruidas = min_val + pesos_normalizados * (max_val - min_val)
-            
-            for val in coords_reconstruidas:
-                pontos_finais.append((int(val), outra_coord_media) if por_x else (outra_coord_media, int(val)))
-        else: 
-            passo = (max_val - min_val) / 14.0
-            for i in range(15):
-                val = min_val + i * passo
-                pontos_finais.append((int(val), outra_coord_media) if por_x else (outra_coord_media, int(val)))
-                
-        return pontos_finais
-
-    topo_finais = interpolar_ancoras(topo, 30, por_x=True, tamanho_total=largura)
-    base_finais = interpolar_ancoras(base, 30, por_x=True, tamanho_total=largura)
-    esq_finais = interpolar_ancoras(esquerda, 15, por_x=False, tamanho_total=altura)
-    dir_finais = interpolar_ancoras(direita, 15, por_x=False, tamanho_total=altura)
-
+    # Retorna as listas cruas. O tamanho delas vai variar dependendo do que for achado na foto.
     return topo_finais, base_finais, esq_finais, dir_finais
+
 
 def obter_centros_segmentos_1d(vetor_somas, threshold_ratio=0.15):
     """ Encontra os centros das âncoras agrupando índices contíguos de picos de sinal. """
@@ -765,27 +691,55 @@ def salvar_respostas_json(respostas_dict, caminho_json='respostas_detectadas.jso
 
 # MAIN
 def executar_pipeline_omr(frame_bgr):
+    """
+    Processa uma única foto do gabarito mantendo proporções fixas e controladas.
+    Retorna: (frame_final_rgb, img_debug_ancoras, respostas_finais, texto_status, sucesso)
+    """
+    
+    # =========================================================================
+    # 📐 VARIÁVEIS DE CONFIGURAÇÃO DE PROPORÇÃO E CORTES (Mantenha aqui os ajustes)
+    # =========================================================================
+    # Dimensões fixas perfeitas na proporção 2:3 para alta nitidez das âncoras
+    LARGURA_ALVO = 800
+    ALTURA_ALVO = 1200
+
+    # Definição dos limites da Região de Interesse (ROI) das questões
+    ROI_X_START = 0
+    ROI_Y_START = int(ALTURA_ALVO * 0.40)   # Começa em 40% da altura (480 pixels)
+    ROI_LARGURA = LARGURA_ALVO              # Captura a largura cheia (800 pixels)
+    
+    # NOTA: Seu coeficiente original era 0.775 (o que estoura o limite 1.0 da imagem).
+    # Caso sua função 'cortar_imagem' não faça o tratamento de limite (clip), 
+    # mude o coeficiente abaixo para 0.60 para que o corte termine exatamente na borda (40% + 60% = 100%).
+    ROI_ALTURA = int(ALTURA_ALVO * 0.775)   
+    # =========================================================================
+
+    # Clonamos o frame para desenhar elementos visuais sem corromper a matriz original
     frame_exibicao = frame_bgr.copy()
     respostas_finais = None
-    img_debug_ancoras = None  # Inicializa como None caso a folha não seja encontrada
+    img_debug_ancoras = None  # Inicializado como None caso a folha não seja detectada
     sucesso = False
     
-    # --- DETECÇÃO DA FOLHA ---
+    # --- 1. DETECÇÃO DA FOLHA ---
     cantos_folha = detectar_folha_retangular(frame_bgr)
 
     if cantos_folha is not None:
         try:
+            # --- 2. ALINHAMENTO DE PERSPECTIVA E REDIMENSIONAMENTO FIXO ---
             gabarito_endireitado = transformar_perspectiva_e_cortar(frame_bgr, cantos_folha)
-            gabarito_endireitado = cv2.resize(gabarito_endireitado, (800, 1200)) 
+            gabarito_endireitado = cv2.resize(gabarito_endireitado, (LARGURA_ALVO, ALTURA_ALVO)) 
 
-            x_start = 1
-            y_start = int(600 * 0.4) 
-            corte_largura = 400
-            corte_altura = int(600 * 0.775)
-
-            ROI = cortar_imagem(gabarito_endireitado, x_start, y_start, corte_largura, corte_altura)
+            # --- 3. RECORTE DA REGIÃO DE INTERESSE (ROI) ---
+            ROI = cortar_imagem(
+                gabarito_endireitado, 
+                ROI_X_START, 
+                ROI_Y_START, 
+                ROI_LARGURA, 
+                ROI_ALTURA
+            )
         
-            # AJUSTE AQUI: Coletando os 2 retornos da leitura de respostas
+            # --- 4. PROCESSAMENTO OMR E CAPTURA DE DEBUG ---
+            # Coletando os 2 retornos essenciais vindos do motor de processamento
             respostas_finais, img_debug_ancoras = processar_e_detectar_respostas(ROI) 
             
             if respostas_finais:
@@ -794,73 +748,18 @@ def executar_pipeline_omr(frame_bgr):
                 sucesso = True
             else:
                 texto_status = "Folha encontrada, mas falha ao ler as alternativas."
+                
         except Exception as e:
             texto_status = f"Erro no processamento interno: {str(e)}"
             
-        # Desenho dos Feedbacks Visuais nos cantos 'L'
-        cantos_desenho = cantos_folha.astype(np.int32).reshape(4, 2)
-        cv2.polylines(frame_exibicao, [cantos_desenho], isClosed=True, color=(0, 255, 0), thickness=4)
-        for i, ponto in enumerate(cantos_desenho):
-            cx, cy = ponto
-            cv2.circle(frame_exibicao, (cx, cy), 15, (255, 255, 0), 3)
-            cv2.circle(frame_exibicao, (cx, cy), 5, (255, 0, -1))
-    else:
-        texto_status = "Procurando Folha... Certifique-se de que os 4 cantos em 'L' estão visíveis."
-
-    frame_final_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
-    
-    # MÁGICA COMPLETA: Retornando exatamente os 5 elementos que o seu app.py espera!
-    return frame_final_rgb, img_debug_ancoras, respostas_finais, texto_status, sucesso
-    """
-    Processa uma única foto do gabarito.
-    Retorna: (frame_anotado_rgb, respostas_dict, mensagem_status, sucesso_bool)
-    """
-    # Criamos uma cópia para desenhar os feedbacks visuais sem alterar o original
-    frame_exibicao = frame_bgr.copy()
-    respostas_finais = None
-    sucesso = False
-    
-    # --- DETECÇÃO DA FOLHA ---
-    cantos_folha = detectar_folha_retangular(frame_bgr)
-
-    if cantos_folha is not None:
-        try:
-            # 1. Alinhamento de Perspectiva
-            gabarito_endireitado = transformar_perspectiva_e_cortar(frame_bgr, cantos_folha)
-            gabarito_endireitado = cv2.resize(gabarito_endireitado, (400, 600)) 
-
-            # 2. Definição da Região de Interesse (ROI) das questões
-            x_start = 1
-            y_start = int(600 * 0.4) 
-            corte_largura = 400
-            corte_altura = int(600 * 0.775)
-
-            ROI = cortar_imagem(gabarito_endireitado, 
-                                x_start, y_start, 
-                                corte_largura, corte_altura)
-        
-            # 3. Processamento OMR das Alternativas
-            respostas_finais = processar_e_detectar_respostas(ROI) 
-            
-            if respostas_finais:
-                salvar_respostas_json(respostas_finais, caminho_json='respostas_detectadas.json')
-                texto_status = "GABARITO ALINHADO! JSON GERADO COM SUCESSO."
-                sucesso = True
-            else:
-                texto_status = "Folha encontrada, mas falha ao ler as alternativas."
-        except Exception as e:
-            texto_status = f"Erro no processamento interno: {str(e)}"
-            
-        # ==========================================
-        # DESENHO DOS FEEDBACKS VISUAIS (CANTOS L)
-        # ==========================================
-        # Como é uma foto estática, desenhamos direto na escala original para não perder resolução
+        # --- 5. DESENHO DOS FEEDBACKS VISUAIS (CANTOS L) ---
+        # Desenhamos direto na escala nativa da foto para preservar a nitidez máxima da visualização
         cantos_desenho = cantos_folha.astype(np.int32).reshape(4, 2)
         
-        # Linhas guia verdes
+        # Linhas contínuas guias em Verde
         cv2.polylines(frame_exibicao, [cantos_desenho], isClosed=True, color=(0, 255, 0), thickness=4)
         
-        # Alvos nos cantos
+        # Alvos circulares nos vértices
         for i, ponto in enumerate(cantos_desenho):
             cx, cy = ponto
             cv2.circle(frame_exibicao, (cx, cy), 15, (255, 255, 0), 3)
@@ -870,8 +769,8 @@ def executar_pipeline_omr(frame_bgr):
     else:
         texto_status = "Procurando Folha... Certifique-se de que os 4 cantos em 'L' estão visíveis."
 
-    # ALERTA IMPORTANTE: O OpenCV trabalha em BGR, mas o Streamlit/Web trabalha em RGB.
-    # Precisamos converter a imagem antes de exportar!
+    # Conversão obrigatória: OpenCV (BGR) para renderização Web / Streamlit (RGB)
     frame_final_rgb = cv2.cvtColor(frame_exibicao, cv2.COLOR_BGR2RGB)
     
-    return frame_final_rgb, respostas_finais, texto_status, sucesso
+    # Retorno limpo com as 5 variáveis esperadas pelo desempacotamento do app.py
+    return frame_final_rgb, img_debug_ancoras, respostas_finais, texto_status, sucesso
